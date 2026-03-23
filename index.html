@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI料理サポート Pro</title>
+    
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🍳</text></svg>">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%234285F4'/><text y='75' x='10' font-size='70'>🍳</text></svg>">
+
+    <style>
+        /* デザイン設定（スマホ最適化） */
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            margin: 0; padding: 0;
+            background-color: #f4f7f6;
+            color: #333;
+            padding-bottom: 90px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #FF5722, #FF9800);
+            color: white;
+            text-align: center;
+            padding: 15px;
+            font-size: 20px;
+            font-weight: bold;
+            position: sticky; top: 0; z-index: 1000;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        .page { display: none; padding: 20px; }
+        .page.active { display: block; animation: fadeIn 0.3s ease-in; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .card { background: white; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        h2 { font-size: 1.2rem; margin-top: 0; color: #FF5722; }
+        
+        input, textarea, select {
+            width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; box-sizing: border-box; margin-bottom: 12px;
+        }
+        
+        button {
+            width: 100%; padding: 15px; background-color: #FF5722; color: white; border: none; border-radius: 8px;
+            font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 10px;
+        }
+        button:active { transform: scale(0.98); opacity: 0.9; }
+        .btn-blue { background-color: #2196F3; }
+        .btn-green { background-color: #4CAF50; }
+        .btn-gray { background-color: #757575; }
+
+        /* リスト表示 */
+        .recipe-item { border-left: 5px solid #FF5722; cursor: pointer; }
+        .shopping-row { display: flex; align-items: center; background: white; padding: 12px; border-radius: 8px; margin-bottom: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .shopping-row input { width: 22px; height: 22px; margin-right: 12px; margin-bottom: 0; }
+        .checked { text-decoration: line-through; color: #bbb; }
+
+        .image-preview { width: 100%; border-radius: 8px; margin-top: 10px; display: none; }
+
+        /* ナビゲーション */
+        .nav { position: fixed; bottom: 0; width: 100%; background: white; display: flex; border-top: 1px solid #eee; padding-bottom: env(safe-area-inset-bottom); }
+        .nav-btn { flex: 1; padding: 12px 0; text-align: center; font-size: 12px; color: #888; background: none; border: none; }
+        .nav-btn.active { color: #FF5722; font-weight: bold; }
+        .icon-large { font-size: 20px; display: block; }
+    </style>
+</head>
+<body>
+
+    <div class="header">AI 料理 & 買い物 Pro 🍳</div>
+
+    <div id="page-settings" class="page active">
+        <div class="card">
+            <h2>🔑 API 設定</h2>
+            <input type="password" id="api-key" placeholder="Gemini APIキーを入力">
+            <button onclick="CookingApp.saveApiKey()">保存して開始</button>
+        </div>
+
+        <div class="card">
+            <h2>💾 バックアップと移行</h2>
+            <p style="font-size:12px; color:#666;">データをファイルとして保存したり、読み込んだりできます。</p>
+            <button class="btn-blue" onclick="CookingApp.exportData()">データをダウンロード (JSON)</button>
+            <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
+            <label style="font-size:12px;">バックアップを読み込む：</label>
+            <input type="file" id="import-file" accept=".json" onchange="CookingApp.importData(event)">
+        </div>
+        <p style="text-align:center; font-size:11px; color:#999;">Ver 2.0 (Gemini 3 Flash連携版)</p>
+    </div>
+
+    <div id="page-home" class="page">
+        <div class="card">
+            <h2>✨ AIにレシピを聞く</h2>
+            <label style="font-size:12px;">材料やイメージ（例：ナスと豚肉でさっぱり）</label>
+            <input type="text" id="ai-prompt" placeholder="何を作ろうかな？">
+            
+            <label style="font-size:12px;">調理スタイル</label>
+            <select id="ai-category">
+                <option value="指定なし">指定なし（普通に作る）</option>
+                <option value="レンジ専用">レンジだけで完結（時短・楽）</option>
+                <option value="炊飯器専用">炊飯器におまかせ（炊き込み・煮込み）</option>
+            </select>
+            
+            <button id="gen-btn" class="btn-green" onclick="CookingApp.askGemini()">美味しいレシピを生成！</button>
+            <div id="loading" style="display:none; text-align:center;">
+                <p>Geminiが最強レシピを考案中...🔥<br><small>分量と火の通りを2重チェックしています</small></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="page-list" class="page">
+        <h2>📖 保存レシピ</h2>
+        <select id="filter-cat" onchange="CookingApp.renderList()">
+            <option value="すべて">すべて表示</option>
+            <option value="レンジ専用">レンジ専用</option>
+            <option value="炊飯器専用">炊飯器専用</option>
+            <option value="指定なし">その他</option>
+        </select>
+        <div id="list-container"></div>
+    </div>
+
+    <div id="page-shopping" class="page">
+        <h2>🛒 お買い物リスト</h2>
+        <div id="shopping-container"></div>
+        <button class="btn-gray" onclick="CookingApp.clearShopping()" style="margin-top:20px;">リストをリセット</button>
+    </div>
+
+    <div id="page-detail" class="page">
+        <h2 id="det-title">レシピ名</h2>
+        <div class="card">
+            <label style="font-size:12px;">材料と分量：</label>
+            <textarea id="det-ing" style="height:220px; font-family:monospace;"></textarea>
+            <button onclick="CookingApp.updateRecipe()">変更を保存</button>
+            <button class="btn-blue" onclick="CookingApp.addToList()">🛒 買い物リストに全追加</button>
+        </div>
+        <button class="btn-gray" onclick="CookingApp.openSteps()">👉 作り方の手順へ</button>
+    </div>
+
+    <div id="page-steps" class="page">
+        <h2 id="step-title-display">作り方</h2>
+        <div class="card">
+            <textarea id="step-desc" readonly style="border:none; background:none; height:250px; line-height:1.6;"></textarea>
+        </div>
+        <div class="card">
+            <h3>📸 私の完成写真</h3>
+            <input type="file" accept="image/*" onchange="CookingApp.previewImage(event)">
+            <img id="step-img-preview" class="image-preview">
+            <button class="btn-green" onclick="CookingApp.savePhoto()" style="margin-top:10px;">写真を保存する</button>
+        </div>
+        <button class="btn-gray" onclick="CookingApp.navigate('list')">一覧に戻る</button>
+    </div>
+
+    <div class="nav" id="main-nav" style="display:none;">
+        <button id="nav-home" class="nav-btn" onclick="CookingApp.navigate('home')"><span class="icon-large">✨</span>AI作成</button>
+        <button id="nav-list" class="nav-btn" onclick="CookingApp.navigate('list')"><span class="icon-large">📖</span>レシピ</button>
+        <button id="nav-shopping" class="nav-btn" onclick="CookingApp.navigate('shopping')"><span class="icon-large">🛒</span>買い物</button>
+        <button id="nav-settings" class="nav-btn" onclick="CookingApp.navigate('settings')"><span class="icon-large">⚙️</span>設定</button>
+    </div>
+
+    <script>
+        const CookingApp = {
+            apiKey: '',
+            recipes: [],
+            shopping: [],
+            currentId: null,
+
+            init() {
+                this.apiKey = localStorage.getItem('gemini_api_key_v2') || '';
+                const r = localStorage.getItem('recipes_v2');
+                if (r) this.recipes = JSON.parse(r);
+                const s = localStorage.getItem('shopping_v2');
+                if (s) this.shopping = JSON.parse(s);
+
+                if (this.apiKey) {
+                    this.navigate('home');
+                    document.getElementById('main-nav').style.display = 'flex';
+                }
+            },
+
+            saveApiKey() {
+                const key = document.getElementById('api-key').value;
+                if (!key) return alert('APIキーを入力してね！');
+                this.apiKey = key;
+                localStorage.setItem('gemini_api_key_v2', key);
+                document.getElementById('main-nav').style.display = 'flex';
+                this.navigate('home');
+            },
+
+            navigate(id) {
+                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+                document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+                document.getElementById('page-' + id).classList.add('active');
+                const nav = document.getElementById('nav-' + id);
+                if (nav) nav.classList.add('active');
+                
+                if (id === 'list') this.renderList();
+                if (id === 'shopping') this.renderShopping();
+            },
+
+            // --- Gemini API 呼び出し (プロンプト強化版) ---
+            async askGemini() {
+                const prompt = document.getElementById('ai-prompt').value;
+                const cat = document.getElementById('ai-category').value;
+                if (!prompt) return alert('何を作りたいか教えてね！');
+
+                document.getElementById('gen-btn').style.display = 'none';
+                document.getElementById('loading').style.display = 'block';
+
+                // プロンプトを強化：分量チェックと安全確認を徹底
+                const systemPrompt = `あなたは一流の料理研究家兼、食品衛生責任者です。
+以下のユーザーの要望に対し、絶対に美味しく、かつ安全なレシピを作成してください。
+
+【厳格なルール】
+1. 料理名、材料、手順を日本語で出力すること。
+2. 調理カテゴリ「${cat}」を必ず守ること。
+3. 【重要】全ての調味料の分量が「常識的か」を二重チェックしてください（例：塩大さじ3など、明らかに異常な量は避ける）。
+4. 【重要】肉や魚を扱う場合は、食中毒を避けるため「中まで火が通っているか確認する」という手順を必ず含めてください。
+5. 出力は必ず以下のJSON形式のみ（余計な文字なし）にすること：
+{"title": "料理名", "ingredients": "材料1 (分量)\\n材料2 (分量)", "steps": "1.手順1\\n2.手順2 (火の通りを確認する)"}`;
+
+                try {
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${this.apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + "\n\n要望: " + prompt }] }] })
+                    });
+
+                    const data = await res.json();
+                    const text = data.candidates[0].content.parts[0].text;
+                    const json = JSON.parse(text.match(/\{.*\}/s)[0]);
+
+                    const newRecipe = { id: Date.now(), title: json.title, category: cat, ingredients: json.ingredients, steps: json.steps, image: '' };
+                    this.recipes.push(newRecipe);
+                    this.save();
+                    this.navigate('list');
+                } catch (e) {
+                    alert('AIがうまく答えられなかったみたい。APIキーや通信を確認してね！');
+                } finally {
+                    document.getElementById('gen-btn').style.display = 'block';
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('ai-prompt').value = '';
+                }
+            },
+
+            // --- バックアップ機能 (JSONダウンロード) ---
+            exportData() {
+                const data = {
+                    recipes: this.recipes,
+                    shopping: this.shopping
+                };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `cooking_app_backup_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            },
+
+            // --- 復元機能 (JSON読み込み) ---
+            importData(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = JSON.parse(e.target.result);
+                        if (data.recipes) this.recipes = data.recipes;
+                        if (data.shopping) this.shopping = data.shopping;
+                        this.save();
+                        alert('データを復元したよ！');
+                        this.renderList();
+                    } catch (err) {
+                        alert('ファイルの形式が正しくないみたい。');
+                    }
+                };
+                reader.readAsText(file);
+            },
+
+            // --- UI 処理 (省略なし) ---
+            renderList() {
+                const container = document.getElementById('list-container');
+                const filter = document.getElementById('filter-cat').value;
+                container.innerHTML = '';
+                this.recipes.filter(r => filter === 'すべて' || r.category === filter).forEach(r => {
+                    const d = document.createElement('div');
+                    d.className = 'card recipe-item';
+                    d.innerHTML = `<strong>${r.category}</strong><br>${r.title}`;
+                    d.onclick = () => this.openDetail(r.id);
+                    container.appendChild(d);
+                });
+            },
+
+            renderShopping() {
+                const container = document.getElementById('shopping-container');
+                container.innerHTML = '';
+                if (this.shopping.length === 0) return container.innerHTML = '<p style="text-align:center; color:#999;">リストは空だよ</p>';
+                this.shopping.forEach((item, i) => {
+                    const d = document.createElement('div');
+                    d.className = 'shopping-row ' + (item.done ? 'checked' : '');
+                    d.innerHTML = `<input type="checkbox" ${item.done ? 'checked' : ''} onchange="CookingApp.toggleShop(${i})"><span>${item.text}</span>`;
+                    container.appendChild(d);
+                });
+            },
+
+            openDetail(id) {
+                const r = this.recipes.find(x => x.id === id);
+                this.currentId = id;
+                document.getElementById('det-title').innerText = r.title;
+                document.getElementById('det-ing').value = r.ingredients;
+                this.navigate('detail');
+            },
+
+            updateRecipe() {
+                const r = this.recipes.find(x => x.id === this.currentId);
+                r.ingredients = document.getElementById('det-ing').value;
+                this.save();
+                alert('保存完了！');
+            },
+
+            addToList() {
+                const lines = document.getElementById('det-ing').value.split('\n').filter(l => l.trim());
+                lines.forEach(l => this.shopping.push({ text: l.trim(), done: false }));
+                this.save();
+                alert('買い物リストに追加したよ！');
+            },
+
+            toggleShop(i) {
+                this.shopping[i].done = !this.shopping[i].done;
+                this.save();
+                this.renderShopping();
+            },
+
+            clearShopping() {
+                if (confirm('リストを消してもいい？')) { this.shopping = []; this.save(); this.renderShopping(); }
+            },
+
+            openSteps() {
+                const r = this.recipes.find(x => x.id === this.currentId);
+                document.getElementById('step-title-display').innerText = r.title + " 手順";
+                document.getElementById('step-desc').value = r.steps;
+                const img = document.getElementById('step-img-preview');
+                if (r.image) { img.src = r.image; img.style.display = 'block'; } else { img.style.display = 'none'; }
+                this.navigate('steps');
+            },
+
+            previewImage(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    const img = document.getElementById('step-img-preview');
+                    img.src = ev.target.result;
+                    img.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            },
+
+            savePhoto() {
+                const r = this.recipes.find(x => x.id === this.currentId);
+                r.image = document.getElementById('step-img-preview').src;
+                this.save();
+                alert('写真を保存したよ！');
+            },
+
+            save() {
+                localStorage.setItem('recipes_v2', JSON.stringify(this.recipes));
+                localStorage.setItem('shopping_v2', JSON.stringify(this.shopping));
+            }
+        };
+
+        window.onload = () => CookingApp.init();
+    </script>
+</body>
+</html>
